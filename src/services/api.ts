@@ -1,9 +1,11 @@
 import { useAuthStore } from '../stores/auth'
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+
 export async function apiPost<T = unknown>(path: string, body: Record<string, unknown>): Promise<T> {
   const auth = useAuthStore()
 
-  const res = await fetch(`http://localhost:8080${path}`, {
+  const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
