@@ -26,6 +26,37 @@ const firebaseConfig = {
 const vapidKey =
   "BNy3H7r-D15iL-vAIiNIb9lrg9Pje_4Mm9w4UYEk27q960rbH3DezbdNT4D9M-0RQxuWjsL3cGwXXVuQ0w1gC_c";
 
+// ─── PWA Detection ───────────────────────────────────────────────────────────
+
+const isStandalone =
+  window.matchMedia("(display-mode: standalone)").matches ||
+  (navigator as unknown as { standalone?: boolean }).standalone === true;
+
+const isIOS =
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+
+const needsPWAInstall = !isStandalone && typeof Notification === "undefined";
+const showInstallBanner = ref(needsPWAInstall && isIOS);
+
+// Android "beforeinstallprompt" — lets us trigger native install dialog
+let deferredPrompt: Event & { prompt(): Promise<void> } | null = null;
+const canPromptInstall = ref(false);
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e as Event & { prompt(): Promise<void> };
+  canPromptInstall.value = true;
+});
+
+async function promptInstall() {
+  if (deferredPrompt) {
+    await deferredPrompt.prompt();
+    deferredPrompt = null;
+    canPromptInstall.value = false;
+  }
+}
+
 // ─── Notification Setup ──────────────────────────────────────────────────────
 
 const status = ref("Not initialized");
@@ -71,7 +102,9 @@ async function enableNotifications() {
         time: new Date().toLocaleTimeString(),
       });
 
-      new Notification(title, { body });
+      if (typeof Notification !== "undefined") {
+        new Notification(title, { body });
+      }
     });
 
     notificationsEnabled.value = true;
@@ -153,7 +186,33 @@ async function onLogout() {
           <div class="text-caption text-grey-7">Status: {{ status }}</div>
         </q-card-section>
 
-        <q-card-section v-if="!notificationsEnabled">
+        <q-card-section v-if="needsPWAInstall && canPromptInstall">
+          <q-btn
+            label="Install App"
+            color="primary"
+            icon="download"
+            class="full-width"
+            size="lg"
+            @click="promptInstall"
+          />
+          <div class="text-caption text-grey-7 q-mt-sm text-center">
+            Push notifications require the app to be installed
+          </div>
+        </q-card-section>
+
+        <q-card-section v-else-if="needsPWAInstall && isIOS">
+          <q-banner class="bg-orange-1 text-grey-8 rounded-borders">
+            <template #avatar>
+              <q-icon name="info" color="warning" />
+            </template>
+            Tap the
+            <q-icon name="ios_share" color="primary" size="xs" />
+            <strong>Share</strong> button below, then
+            <strong>"Add to Home Screen"</strong> to enable push notifications.
+          </q-banner>
+        </q-card-section>
+
+        <q-card-section v-else-if="!notificationsEnabled">
           <q-btn
             label="Enable Notifications"
             color="primary"
@@ -266,5 +325,101 @@ async function onLogout() {
         </q-list>
       </q-card>
     </div>
+
+    <!-- iOS Safari: Sticky bottom install banner -->
+    <transition name="slide-up">
+      <div v-if="showInstallBanner" class="ios-install-banner">
+        <q-btn
+          flat
+          round
+          dense
+          icon="close"
+          size="sm"
+          color="grey-6"
+          class="ios-install-banner__close"
+          @click="showInstallBanner = false"
+        />
+        <div class="ios-install-banner__arrow">
+          <q-icon name="arrow_downward" size="md" color="primary" />
+        </div>
+        <div class="ios-install-banner__content">
+          <div class="ios-install-banner__icon">
+            <q-icon name="add_to_home_screen" size="36px" color="primary" />
+          </div>
+          <div class="ios-install-banner__text">
+            <div class="text-subtitle2">Install this app</div>
+            <div class="text-caption text-grey-7">
+              Tap
+              <q-icon name="ios_share" size="xs" color="primary" />
+              then <strong>"Add to Home Screen"</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
   </q-page>
 </template>
+
+<style scoped>
+.ios-install-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-top: 1px solid #e0e0e0;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  padding: 16px 16px 24px;
+  z-index: 9999;
+}
+
+.ios-install-banner__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.ios-install-banner__arrow {
+  text-align: center;
+  margin-bottom: 8px;
+  animation: bounce 1.5s infinite;
+}
+
+.ios-install-banner__content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ios-install-banner__icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #e3f2fd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
+}
+</style>

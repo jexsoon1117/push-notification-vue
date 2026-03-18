@@ -29,3 +29,4 @@ logs
 
 public/version.txt
 public/config/env.js
+.vercel
